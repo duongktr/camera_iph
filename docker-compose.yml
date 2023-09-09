@@ -1,0 +1,20 @@
+version: "3"
+
+services:
+  mct-redis:
+    container_name: mct_redis
+    image: redis:7.0.4
+    restart: always
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - '6379:6379'
+
+  mct-camera:
+    container_name: mct_camera
+    image: hoangph3/mct-camera:1.0
+    restart: always
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+    ports:
+      - '9080:9080'
