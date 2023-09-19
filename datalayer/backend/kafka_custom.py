@@ -7,8 +7,8 @@ from kafka import (
     OffsetAndMetadata,
 )
 
-
-DEFAULT_CONFIG = {"bootstrap_server": "localhost:9092", "topic": "event"}
+DEFAULT_CONFIG = {"bootstrap_servers": "localhost:9092", 
+                  "topic": "event"}
 
 
 class KafkaSender(object):
@@ -88,8 +88,9 @@ class KafkaSender(object):
             return False, str(res)
 
     def close(self, timeout=None):
-        """Close this producer.
-
+        """
+        Close this producer.
+        
         Arguments:
             timeout (float, optional): timeout in seconds to wait for completion.
         """
@@ -100,6 +101,10 @@ class KafkaReader(object):
     def __init__(
         self, bootstrap_servers=None, topic=None, group_id=None, **options
     ):
+        # if bootstrap_servers is None:
+        #     self.bootstrap_servers = DEFAULT_CONFIG["bootstrap_servers"]
+        # else:
+        #     self.bootstrap_servers = bootstrap_servers
         config = {
             "session_timeout_ms": 10000,
             "request_timeout_ms": 305000,

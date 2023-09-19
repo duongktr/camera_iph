@@ -16,7 +16,7 @@ DEFAULT_INDEX = {
 DEFAULT_SEARCH = {
     "anns_field": "embeddings",
     "param": {"metric_type": "L2"},
-    "limit": 20
+    "limit": 5,
 }
 
 DEFAULT_SCHEMA = {
@@ -52,10 +52,10 @@ class MilvusBackend:
             init_schema = CollectionSchema(fields)
             self.collection = Collection(collection, init_schema, consistency_level="Strong")
 
-        if index_field is not None:
-            self.collection.release()
-            self.collection.create_index(index_field, index_params)
-            self.collection.load()
+            if index_field is not None:
+                self.collection.release()
+                self.collection.create_index(index_field, index_params)
+                self.collection.load()
 
     def __create_schema(self, **kwargs):
         index_field = None
@@ -75,7 +75,8 @@ class MilvusBackend:
         return fields, index_field
 
     def insert(self, data):
-        self.collection.insert(pd.DataFrame(data))
+        # data=pd.DataFrame(data)
+        self.collection.insert(data)
         self.collection.flush()
 
     def _insert(self, data, **kwargs):
@@ -88,7 +89,8 @@ class MilvusBackend:
     def _delete(self, expr, **kwargs):
         pass
 
-    def search(self, data, search_params):
+    def search(self, data, search_params=None):
+        search_params = search_params or DEFAULT_SEARCH 
         search_params['data'] = data
         hits = self.collection.search(**search_params)
         return hits
@@ -102,3 +104,27 @@ class MilvusBackend:
 
     def _query(self, search_params, **kwargs):
         pass
+    
+    # def get_info(self):
+    #     return dict(
+    #         schema = self.collection.schema,
+    #         indexes = self.collection.indexes,
+    #         is_empty = self.collection.is_empty,
+    #         num_entities = self.collection.num_entities,       
+    #         primary_field = self.collection.primary_field
+    #     )
+
+    def schema(self):
+        return self.collection.schema
+
+    def indexes(self):
+        return self.collection.indexes
+    
+    def is_empty(self):
+        return self.collection.is_empty
+    
+    def num_entities(self):
+        return self.collection.num_entities
+    
+    def primary_field(self):
+        return self.collection.primary_field
