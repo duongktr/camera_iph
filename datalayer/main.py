@@ -11,7 +11,8 @@ import json
 import time
 import datetime
 
-from utils.utility import convert_second_2_datetime, split_datetime 
+import numpy as np
+from utils.utility import convert_second_2_datetime, split_datetime, split_prefix_id 
 
 # config 
 kafka_servers = "localhost:9092"
@@ -47,8 +48,11 @@ testCollection = MilvusBackend(host=milvus_host,
                                port=milvus_port,
                                collection=milvus_collection)
 
+test_mapping = {"name":"test"}
+test_index = "name"
 testElasticsearch = ElasticsearchBackend(host=es_host,
-                                   port=es_port) 
+                                   port=es_port,
+                                   index_mapping=test_mapping) 
 
 # create log to logstash
 # service 1 => log <= logstash => elktic <= kibana
@@ -72,6 +76,7 @@ def reset_count():
 def get_data(reader: KafkaReader):
     """
         reader: KafkaReader object
+        
         this function read data receive from jetson and commit offset at that time to avoid re-processing the last message read
 
         return a list result received from kafka
@@ -111,13 +116,14 @@ def insert_data(records, collection: MilvusBackend):
     """
     for record in records:
         vector = record['feature_embeddings']
+        time_start = convert_second_2_datetime(record['timestamp'])
+        obj_image = record['object_image'] #base64
+        cam_id = record['cam_id']        
         # check if data exist 
+
         search_result = collection.search(vector)
 
-        if search_result[0].distance > 10:
-            time_start = convert_second_2_datetime(record['timestamp'])
-            obj_image = record['object_image'] #base64
-            cam_id = record['cam_id']
+        if search_result[0].distance > 5: #condition if match same person
             global_id = split_datetime(time_start) + str(count)  #prefix: yyyyddmm, id example: 20230919 + count
             global count
             count += 1
@@ -134,31 +140,53 @@ def insert_data(records, collection: MilvusBackend):
                 metadata
             ]
             collection.insert(data)
-        # search_params = {
-        #     [],
-        #     output = 'globalId'
-        # }
-        # user = testCollection.query(search_params=search_params)
+        
+        search_id = search_result[0].id
 
-# send result to logstash
-def send_result(results, elk: ElasticsearchBackend):
+        user = testCollection.query(expr=f'_id == {search_id}', output_fields=['globalId'])
+
+        metadata = {
+            "globalId": user,
+            "startTime": time_start,
+            "objImage": obj_image,
+            "cameraId": cam_id
+        }
+
+        data = [
+            vector,
+            metadata
+        ]
+        collection.insert(data)
+
+# send result to elasticsearch
+def send_result(result, index, elk: ElasticsearchBackend):
     """
         elk: Elasticsearch
         sender: KafkaSender
 
-        create log return to elasticsearch
-    """
-    for result in results:
-        log = {
-            ""
-        }
-    
-# count people int/out
-def count_people():
+        create result return to elasticsearch
+        document format:
+            {
+            "globalId": string,
+            "startTime": string,
+            "camId": int,
+            "image": string,
+            }
+    """ 
+    elk.insert(index=index, body=result)
+
+# count people 
+def count_people(list_user_id):
     """
         logic inside ???
     """
-    return
+    ids = []
+    for user_id in list_user_id:
+        user_id = split_prefix_id(user_id)
+        ids.append(user_id)
+    
+    unique_ids = set(ids)
+    return len(unique_ids)
 
 def run():
     while True:

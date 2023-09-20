@@ -22,6 +22,7 @@ message = {
 
 sender.sendmsg(msg=json.dumps(message), topic = 'testDuong')
 
+print(type(message['feature_embeddings']))
 print(f'Sending message to topic message')
 
 # print(vector)

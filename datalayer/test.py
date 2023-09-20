@@ -1,15 +1,36 @@
+from backend.es import ElasticsearchBackend
+from elasticsearch import Elasticsearch
+
+from utils.utility import convert_second_2_datetime
 import time
-import datetime
-import random
 
-ti = time.time()
+# hosts = {
+#     "host": "localhost",
+#     "port": 9200
+# }
 
-datetime = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(ti))
+host = "localhost"
+port = 9200
 
-print(datetime)
-# d, t = datetime.split(" ")
+# index name
+index_mapping = {
+    "name": "test"
+}
 
-# d=  d.replace("-","")
+index = "name"
 
-# a = 5
-# print(d+str(a))
+elk = ElasticsearchBackend(host=host, port=port, index_mapping=index_mapping)
+
+document = {
+    "globalId": str(2023092025),
+    "startTime": convert_second_2_datetime(time.time()),
+    "image": "abcdefghijk",
+    "camId": 5
+}
+
+# print(type(document))
+elk.insert(index=index, body=document)
+
+res = elk._search(index=index)
+
+print(res['hits']['hits'])

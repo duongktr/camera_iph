@@ -1,4 +1,4 @@
-from time import strftime, localtime
+from time import strftime, localtime, time
 import numpy as np
 import base64
 from PIL import Image
@@ -11,6 +11,9 @@ def convert_second_2_datetime(seconds):
 def split_datetime(datetime: str):
     d, t = datetime.split(" ")
     return d.replace("-","") 
+
+def split_prefix_id(global_id):
+    return int(global_id[8:])
 
 def convert_bytes_to_numpy_array(j_dumps: str, resize=False) -> np.array:
     # TODO: load json string to numpy array

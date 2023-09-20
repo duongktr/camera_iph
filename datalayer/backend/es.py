@@ -1,7 +1,7 @@
 from elasticsearch import Elasticsearch
-from datalayer.query_parser.ast_to_json import parse_query_string_to_json
-from datalayer.query_parser.jsonToES import Json2Es
-from datalayer.query_parser.query_parser_exception import QueryParserException
+from query_parser.ast_to_json import parse_query_string_to_json
+from query_parser.jsonToES import Json2Es
+from query_parser.query_parser_exception import QueryParserException
 
 
 DEFAULT_AST_URI = "http://testserver:9082"
