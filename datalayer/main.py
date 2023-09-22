@@ -28,11 +28,6 @@ es_port = 9200
 log_host = "localhost"
 log_port = 5044
 
-metadata: {
-    "global_id",
-    "time_start",
-    ""
-}
 schema = {
     "feature_embeddings": 512,
     "metadata":""
@@ -58,9 +53,9 @@ testElasticsearch = ElasticsearchBackend(host=es_host,
 # service 1 => log <= logstash => elktic <= kibana
 # service 2 => log <= logstash => elktic <= kibana
 # service 3 => log <= logstash => elktic <= kibana
-logger = logging.getLogger("python-logstash-logger")
-logger.setLevel(logging.INFO)
-logger.addHandler(AsynchronousLogstashHandler(log_host, log_port))
+# logger = logging.getLogger("python-logstash-logger")
+# logger.setLevel(logging.INFO)
+# logger.addHandler(AsynchronousLogstashHandler(log_host, log_port))
 
 # 
 
@@ -80,9 +75,19 @@ def get_data(reader: KafkaReader):
         this function read data receive from jetson and commit offset at that time to avoid re-processing the last message read
 
         return a list result received from kafka
+
+        result: {
+            'camera_id',
+            'timestamp'
+            'object_bbox'
+            'confidence'
+            'object_id'
+            'feature_embeddings'
+            'object_image'
+        }
     """
 
-    records = reader.poll(timeout_ms=10000)
+    records = reader.poll(timeout_ms=1000)
     reader.commit()
     results = []
     for record in records:
@@ -117,7 +122,7 @@ def insert_data(records, collection: MilvusBackend):
     for record in records:
         vector = record['feature_embeddings']
         time_start = convert_second_2_datetime(record['timestamp'])
-        obj_image = record['object_image'] #base64
+        obj_image = record['object_image'] #base64 encode
         cam_id = record['cam_id']        
         # check if data exist 
 
@@ -125,6 +130,7 @@ def insert_data(records, collection: MilvusBackend):
 
         if search_result[0].distance > 5: #condition if match same person
             global_id = split_datetime(time_start) + str(count)  #prefix: yyyyddmm, id example: 20230919 + count
+            #adding new person => count + 1
             global count
             count += 1
 
@@ -143,10 +149,10 @@ def insert_data(records, collection: MilvusBackend):
         
         search_id = search_result[0].id
 
-        user = testCollection.query(expr=f'_id == {search_id}', output_fields=['globalId'])
+        user_id = testCollection.query(expr=f'_id == {search_id}', output_fields=['globalId'])
 
         metadata = {
-            "globalId": user,
+            "globalId": user_id,
             "startTime": time_start,
             "objImage": obj_image,
             "cameraId": cam_id
@@ -156,13 +162,12 @@ def insert_data(records, collection: MilvusBackend):
             vector,
             metadata
         ]
-        collection.insert(data)
+        collection.insert(data) 
 
 # send result to elasticsearch
 def send_result(result, index, elk: ElasticsearchBackend):
     """
         elk: Elasticsearch
-        sender: KafkaSender
 
         create result return to elasticsearch
         document format:
@@ -196,7 +201,12 @@ def run():
         if current.hour == 0 and current.minute == 0 and current.second == 0:
             reset_count()
         
-        time.sleep(0.5)
+        time.sleep(1)
 
         results = get_data(testReader)
+
+        insert_data(results, testCollection)
+
+
+
 

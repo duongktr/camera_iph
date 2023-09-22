@@ -1,36 +1,45 @@
-from backend.es import ElasticsearchBackend
-from elasticsearch import Elasticsearch
+# from backend.es import ElasticsearchBackend
+# from elasticsearch import Elasticsearch
 
-from utils.utility import convert_second_2_datetime
-import time
+# from utils.utility import convert_second_2_datetime
+# import time
 
-# hosts = {
-#     "host": "localhost",
-#     "port": 9200
+# # hosts = {
+# #     "host": "localhost",
+# #     "port": 9200
+# # }
+
+# host = "localhost"
+# port = 9200
+
+# # index name
+# index_mapping = {
+#     "name": "test"
 # }
 
-host = "localhost"
-port = 9200
+# index = "name"
 
-# index name
-index_mapping = {
-    "name": "test"
-}
+# elk = ElasticsearchBackend(host=host, port=port, index_mapping=index_mapping)
 
-index = "name"
+# document = {
+#     "globalId": str(2023092025),
+#     "startTime": convert_second_2_datetime(time.time()),
+#     "image": "abcdefghijk",
+#     "camId": 5
+# }
 
-elk = ElasticsearchBackend(host=host, port=port, index_mapping=index_mapping)
+# # # print(type(document))
+# # elk.insert(index=index, body=document)
 
-document = {
-    "globalId": str(2023092025),
-    "startTime": convert_second_2_datetime(time.time()),
-    "image": "abcdefghijk",
-    "camId": 5
-}
+# # res = elk._search(index=index)
 
-# print(type(document))
-elk.insert(index=index, body=document)
+# # print(res['hits']['hits'])
 
-res = elk._search(index=index)
+# string = b'asfasfas'
+# print(type(string))
 
-print(res['hits']['hits'])
+
+w, h = 8, 5
+m = [[0 for x in range(w)] for y in range(h)] 
+
+print(m)

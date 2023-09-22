@@ -104,18 +104,19 @@ class ElasticsearchBackend:
         res["doc"] = body
         return res
 
-    def search(self, index, identity=None, es_query=None):
+    def search(self, index, identity=None, es_query=None, **kwargs):
         _index = self._index_name(index)
 
         if es_query:
             results = self.es.search(index=_index, body=es_query)["hits"][
                 "hits"
             ]
-        else:
+        elif identity:
             results = self.es.search(
                 index=_index, body=make_query_body(identity)
             )["hits"]["hits"]
-
+        else:
+            results = self.es.search(index=_index, **kwargs)["hits"]["hits"]
         return results
 
     def _search(self, index, identity=None, es_query=None, **kwargs):

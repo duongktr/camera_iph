@@ -13,7 +13,7 @@ def split_datetime(datetime: str):
     return d.replace("-","") 
 
 def split_prefix_id(global_id):
-    return int(global_id[8:])
+    return int(global_id[8:]) #prefix yyyymmdd
 
 def convert_bytes_to_numpy_array(j_dumps: str, resize=False) -> np.array:
     # TODO: load json string to numpy array
