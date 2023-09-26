@@ -38,8 +38,5 @@
 # string = b'asfasfas'
 # print(type(string))
 
+# import datetime
 
-w, h = 8, 5
-m = [[0 for x in range(w)] for y in range(h)] 
-
-print(m)

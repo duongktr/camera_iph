@@ -32,7 +32,7 @@ data = reader.poll(timeout_ms=10000)
 n = len(data)
 # x = data[n-1].value
 x = json.loads(data[n-1].value)
-print(x['object_image'].shape)
+print(x)
 
 
 # # print(data[5])

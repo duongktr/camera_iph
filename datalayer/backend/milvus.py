@@ -104,15 +104,6 @@ class MilvusBackend:
 
     def _query(self, search_params, **kwargs):
         pass
-    
-    # def get_info(self):
-    #     return dict(
-    #         schema = self.collection.schema,
-    #         indexes = self.collection.indexes,
-    #         is_empty = self.collection.is_empty,
-    #         num_entities = self.collection.num_entities,       
-    #         primary_field = self.collection.primary_field
-    #     )
 
     def schema(self):
         return self.collection.schema
