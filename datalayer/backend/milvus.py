@@ -98,8 +98,8 @@ class MilvusBackend:
     def _search(self, data, search_params, **kwargs):
         pass
 
-    def query(self, search_params):
-        hits = self.collection.query(**search_params)
+    def query(self, query_params):
+        hits = self.collection.query(**query_params)
         return hits
 
     def _query(self, search_params, **kwargs):

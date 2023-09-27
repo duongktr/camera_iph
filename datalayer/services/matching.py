@@ -1,6 +1,6 @@
-from datalayer.backend.kafka_custom import KafkaReader, KafkaSender
-from datalayer.backend.milvus import MilvusBackend
-from datalayer.backend.es import ElasticsearchBackend
+from backend.kafka_custom import KafkaReader, KafkaSender
+from backend.milvus import MilvusBackend
+from backend.es import ElasticsearchBackend
 
 import pickle
 
@@ -11,17 +11,17 @@ import time
 import datetime
 
 import numpy as np
-from datalayer.utils.utility import convert_second_2_datetime, split_datetime, split_prefix_id 
+from utils.utility import convert_second_2_datetime, split_datetime, split_prefix_id 
 
 # config 
 kafka_opts={
     "bootstrap_servers": ["localhost:9092"],
-    # "value_deserializer": lambda x: pickle.loads(x) ,
+    "value_deserializer": lambda x: pickle.loads(x) ,
     "group_id": None,
     "session_timeout_ms": 300000,
     "request_timeout_ms": 300000,
     "enable_auto_commit": False,
-    "auto_offset_reset": "earliest",
+    "auto_offset_reset": "latest",
     "topic": "track"
 }
 
@@ -29,6 +29,12 @@ milvus_opts = {
     "host":"localhost",
     "port": 19530,
     "collection": "test_milvus3"
+}
+
+search_params = {
+    "anns_field": "embeddings",
+    "param": {"metric_type": "L2"},
+    "limit": 1,
 }
 
 es_opts={
@@ -71,17 +77,18 @@ def get_data(reader: KafkaReader):
         }
     """
 
-    records = reader.poll(timeout_ms=1000)
+    records = reader.poll(timeout_ms=1000, max_records=500)
 
     #commit offset
-    reader.commit()
+    # reader.commit()
 
     results = []
     for record in records: #ConsumerRecord 
-        results.append(json.loads(record.value))
+        results.append(record.value)
     return results
 
 # match feature embeddings received from jetson
+# search by batch, clustering ...
 def matching(records: list, indexElastic, dist_threshold: float, collection: MilvusBackend):
     """
         records: a list include metadata
@@ -103,17 +110,17 @@ def matching(records: list, indexElastic, dist_threshold: float, collection: Mil
                 "cam_id"
             }
         }
-
         insert log to elasticsearch: metadata
     """
-
+    # vectors = records['feature_embeddings']
     for record in records:
         vector = record['feature_embeddings']
-        date, time = convert_second_2_datetime(record['timestamp']).split(" ")
+        date, time_start = convert_second_2_datetime(record['timestamp']).split(" ")
         obj_image = record['object_image'] #base64 encode
         cam_id = record['camera_id']        
         # check if data exist 
 
+        # t1 = time.time()
         search_result = collection.search([vector])
 
         if search_result[0].distance > dist_threshold:
@@ -121,15 +128,16 @@ def matching(records: list, indexElastic, dist_threshold: float, collection: Mil
             #prefix: yyyyddmm
             # global_id = count
             # adding new person => count + 1
+            global count
+
             metadata = {
                 "globalId": count,
                 "date": date,
-                "startTime": time,  
+                "startTime": time_start,  
                 "objImage": obj_image,
                 "cameraId": cam_id
             }
 
-            global count
             count += 1
 
             data = [
@@ -143,14 +151,16 @@ def matching(records: list, indexElastic, dist_threshold: float, collection: Mil
             # send es
             testElasticsearch.insert(index=indexElastic, body=metadata) 
         
+        logger.info("Updating person")
+
         search_id = search_result[0].id
 
         meta = testCollection.query(expr=f'_id == {search_id}', output_fields=['metadata'])
 
         metadata = {
-            "globalId": meta['globalId'],
+            "globalId": meta[0]['metadata']['globalId'],
             "date": date,
-            "startTime": time,
+            "startTime": time_start,
             "objImage": obj_image,
             "cameraId": cam_id
         }
@@ -166,8 +176,39 @@ def matching(records: list, indexElastic, dist_threshold: float, collection: Mil
         #send es
         testElasticsearch.insert(index=indexElastic, body=metadata)
 
+def matching(records, dist_threshold, collection: MilvusBackend):
+    """
+        records: a list include metadata
+        record:     'camera_id',
+                    'timestamp',
+                    'object_bbox',
+                    'confidence',
+                    'object_id',
+                    'feature_embeddings',
+                    'object_image'
+
+        insert new document to db
+        document: {
+            "embeddings":,
+            "metadata": {
+                "global_id",
+                "object_image",
+                "time_start",
+                "cam_id"
+            }
+        }
+    """
+    vectors = [record['feature_embeddings'] for record in records]
+
+    results = collection.search(vectors, search_params=search_params)
+
+    ids, distances = [result.ids for result in results], [result.distances for result in results]
+
+    for record, id, distance in zip(records, ids, distances):
+        neighbor = [i for i, dist in zip(id,distance) if dist <= dist_threshold]        
+
 def run(**kwgars):
-    distance_threshold = 0.5
+    distance_threshold = 0.4
 
     while True:
         try:
@@ -181,7 +222,9 @@ def run(**kwgars):
 
             results = get_data(testReader)
 
-            testReader.commit()
+            print(len(results))
+
+            # testReader.commit()
             if not len(results):
                 continue
 
