@@ -154,3 +154,7 @@ class ElasticsearchBackend:
             es_query["sort"] = order_by
 
         return self._search(index=index, es_query=es_query)["hits"]["hits"]
+    
+    def get_info(self):
+        return self.es.indices.get('*')
+    

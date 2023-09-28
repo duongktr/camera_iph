@@ -4,7 +4,11 @@ import base64
 from PIL import Image
 import tempfile
 import io
+from datetime import date
 
+def format_global_id(number: int):
+    s = date.today()
+    return s.replace("-",) + "-" +number #yyyy-mm-dd-id
 def convert_second_2_datetime(seconds):
     return strftime('%Y-%m-%d %H:%M:%S', localtime(seconds))
 

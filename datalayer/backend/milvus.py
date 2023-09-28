@@ -104,6 +104,9 @@ class MilvusBackend:
 
     def _query(self, search_params, **kwargs):
         pass
+    
+    def drop_collection(self):
+        self
 
     def schema(self):
         return self.collection.schema

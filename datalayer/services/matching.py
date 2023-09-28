@@ -1,63 +1,160 @@
-from backend.kafka_custom import KafkaReader, KafkaSender
+from backend.kafka_custom import KafkaReader
 from backend.milvus import MilvusBackend
 from backend.es import ElasticsearchBackend
-
-import pickle
+from utils.utility import convert_second_2_datetime
 
 from loguru import logger
 
-import json
-import time
 import datetime
+import pickle
+import json
+import sys
+import random
 
-import numpy as np
-from utils.utility import convert_second_2_datetime, split_datetime, split_prefix_id 
-
-# config 
-kafka_opts={
-    "bootstrap_servers": ["localhost:9092"],
-    "value_deserializer": lambda x: pickle.loads(x) ,
-    "group_id": None,
-    "session_timeout_ms": 300000,
-    "request_timeout_ms": 300000,
-    "enable_auto_commit": False,
-    "auto_offset_reset": "latest",
-    "topic": "track"
-}
-
-milvus_opts = {
-    "host":"localhost",
-    "port": 19530,
-    "collection": "test_milvus3"
-}
-
-search_params = {
-    "anns_field": "embeddings",
-    "param": {"metric_type": "L2"},
-    "limit": 1,
-}
-
-es_opts={
-    "host": "localhost",
-    "port": 9200,
-    "index_mapping": {
-        "name": "test"
-    }
-}
 
 test_mapping = {"name":"test"}
 test_index = "name"
 
-testReader = KafkaReader(**kafka_opts)
-
-testCollection = MilvusBackend(**milvus_opts)
-
-testElasticsearch = ElasticsearchBackend(**es_opts) 
-
 global count
 count = 1
 
-# get data from jetson
+# match feature embeddings received from jetson
+# search by batch, clustering ...
+class Matching():
+    def __init__(
+            self,
+            kafka_opts={
+                "bootstrap_servers": ["localhost:9092"],
+                "value_deserializer": lambda x: pickle.loads(x) ,
+                "group_id": None,
+                "session_timeout_ms": 300000,
+                "request_timeout_ms": 300000,
+                "enable_auto_commit": False,
+                "auto_offset_reset": "earliest",
+                "topic": "track"
+            },
+            es_opts={
+            "host": "localhost",
+            "port": 9200,
+            "index_prefix": "kotora"
+            },
+            milvus_opts = {
+                "host":"localhost",
+                "port": 19530,
+                "collection": "test_milvus3" #change schema
+            },
+            search_params = {
+            "anns_field": "embeddings",
+            "param": {"metric_type": "L2"},
+            "limit": 1,
+            }):
+        
+        self.search_params = search_params
+        
+        self.reader = KafkaReader(**kafka_opts)
+        self.milvusdb = MilvusBackend(**milvus_opts)
+        self.es = ElasticsearchBackend(**es_opts)
+        
+    def run(self, **kwargs):
+        """
+            records: a list include metadata
+            record:     'camera_id',
+                        'timestamp',
+                        'object_bbox',
+                        'confidence',
+                        'object_id',
+                        'feature_embeddings',
+                        'object_image'
+
+            insert new document to db
+            document: {
+                "embeddings":,
+                "metadata": {
+                    "global_id",
+                    "object_image", need decode utf 8 to string for saving
+                    "time_start",
+                    "cam_id"
+                }
+            }
+        """
+        threshold = kwargs.get('distance_threshold', 0.25)
+
+        while True:
+            #check new day
+            current = datetime.datetime.now().time()
+            if current.hour == 0 and current.minute == 0 and current.second == 0:
+                #reset count
+                global count
+                count = 1
+
+                #reset database
+                self.milvusdb.drop_collection()
+
+            records = []
+
+            consumerRecords = self.reader.poll(1000)
+
+            if not len(consumerRecords):
+                continue
+            
+            for record in consumerRecords:
+                records.append(record.value)
+
+            vectors = [record['feature_embeddings'] for record in records]
+
+            searchResults = self.reader.search(vectors, search_params=self.search_params)
+
+            ids, distances = [result.ids[0] for result in searchResults], [result.distances[0] for result in searchResults]
+
+            for record, id, distance, embedding in zip(records, ids, distances, vectors):
+                # new ID
+                if distance > threshold:
+                    global count
+
+                    # global ID
+                    metadata = {
+                        "globalId": count,
+                        "cameraId": record['camera_id'],                    
+                        "timeStart": convert_second_2_datetime(record['timestamp']),
+                        "objectImage": record['object_image'].decode("utf-8") #convert byte encode to string
+                    }
+
+                    data = [
+                        [embedding],
+                        [json.dumps(metadata)] #convert json object to string 
+                    ]
+                    count += 1
+                    #insert new user
+                    self.milvusdb.insert(data)
+                    #send es
+                    self.es.insert(index=test_index, body= metadata)
+                else:
+                    #already exist user
+                    query_params = {
+                        "expr": f'_id == {id}',
+                        "output_fields": ['metadata']
+                    }
+                    
+                    query_results = self.milvusdb.query(query_params)
+
+                    result = json.loads(query_results[0]['metadata'])
+
+                    metadata = {
+                        "globalId": result['globalId'],
+                        "cameraId": record['camera_id'],
+                        "timeStart": convert_second_2_datetime(record['timestamp']),
+                        "objectImage": record['object_image'].decode("utf-8")
+                    }
+
+                    data = [
+                        [embedding],
+                        [json.dumps(metadata)]
+                    ]
+                    #insert old user
+                    self.milvusdb.insert(data)
+                    #send es
+                    self.es.insert(index=test_index, body=metadata)
+
 def get_data(reader: KafkaReader):
     """
         reader: KafkaReader object
@@ -87,8 +184,7 @@ def get_data(reader: KafkaReader):
         results.append(record.value)
     return results
 
-# match feature embeddings received from jetson
-# search by batch, clustering ...
+
 def matching(records: list, indexElastic, dist_threshold: float, collection: MilvusBackend):
     """
         records: a list include metadata
@@ -176,58 +272,3 @@ def matching(records: list, indexElastic, dist_threshold: float, collection: Mil
         #send es
         testElasticsearch.insert(index=indexElastic, body=metadata)
 
-def matching(records, dist_threshold, collection: MilvusBackend):
-    """
-        records: a list include metadata
-        record:     'camera_id',
-                    'timestamp',
-                    'object_bbox',
-                    'confidence',
-                    'object_id',
-                    'feature_embeddings',
-                    'object_image'
-
-        insert new document to db
-        document: {
-            "embeddings":,
-            "metadata": {
-                "global_id",
-                "object_image",
-                "time_start",
-                "cam_id"
-            }
-        }
-    """
-    vectors = [record['feature_embeddings'] for record in records]
-
-    results = collection.search(vectors, search_params=search_params)
-
-    ids, distances = [result.ids for result in results], [result.distances for result in results]
-
-    for record, id, distance in zip(records, ids, distances):
-        neighbor = [i for i, dist in zip(id,distance) if dist <= dist_threshold]        
-
-def run(**kwgars):
-    distance_threshold = 0.4
-
-    while True:
-        try:
-            # reset count people at 12.00 AM
-            current = datetime.datetime.now().time()
-            if current.hour == 0 and current.minute == 0 and current.second == 0:
-                global count
-                count = 1
-            
-            time.sleep(0.5)
-
-            results = get_data(testReader)
-
-            print(len(results))
-
-            # testReader.commit()
-            if not len(results):
-                continue
-
-            matching(results, test_index, distance_threshold, testCollection)
-        except Exception as e:
-            logger.info(f'Error: {str(e)}')
