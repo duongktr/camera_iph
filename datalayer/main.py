@@ -1,4 +1,5 @@
-from services import matching
+from services.matching import Matching
 
 if __name__ == "__main__":
-    matching.run()
+    match = Matching()
+    match.run()

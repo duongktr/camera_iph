@@ -7,31 +7,30 @@ import random
 kafka_opts={
             "bootstrap_servers":["localhost:9092"],
             "group_id": None,
-            "value_deserializer": lambda x: pickle.loads(x) ,
+            # "value_deserializer": lambda x: pickle.loads(x) ,
             "auto_offset_reset": "earliest",
             "enable_auto_commit": False,
-            "topic": "testtrack2"
+            "topic": "testtrack3"
         }
-topic = "testtrack2"
+
 reader = KafkaReader(**kafka_opts)
-# while True:
-#     # reader = KafkaReader(bootstrap_servers=["localhost:9092"], topic="testtrack2", group_id=None, auto_offset_reset="latest")
+# print("connect")
+while True:
 
-#     # reader = KafkaConsumer(topic,**kafka_opts)
-#     data = reader.poll(1000)
+    data = reader.poll(1000, max_records=500)
+    # reader.commit()
+    print(data)
 
-#     # reader.commit()
-#     print(data)
 
-data = reader.poll(1000)
-x = []
+# data = reader.poll(1000)
+# x = []
 
-for d in data:
-    x.append(d.value)
-print(x[0]['camera_id'])
-print(x[0]['timestamp'])
-print(x[0]['object_bbox'])
-print(x[0]['confidence'])
+# for d in data:
+#     x.append(d.value)
+# print(x[0]['camera_id'])
+# print(x[0]['timestamp'])
+# print(x[0]['object_bbox'])
+# print(x[0]['confidence'])
 # print(x[0]['feature_embeddings'])
 
 

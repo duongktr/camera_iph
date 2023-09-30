@@ -70,7 +70,7 @@ class MilvusBackend:
                 index_field = key
             else:
                 fields.append(
-                    FieldSchema(name=key, dtype=DataType.VARCHAR, max_length=10000)
+                    FieldSchema(name=key, dtype=DataType.VARCHAR, max_length=30000)
                 )
         return fields, index_field
 

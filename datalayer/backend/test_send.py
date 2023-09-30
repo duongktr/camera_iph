@@ -13,19 +13,20 @@ sender = KafkaSender(topic="testDuong")
 """
     test send and receive data with kafka
 """
+print(1)
 message = {
     "cam_id": 'sgdgsdagas',
     'timestamp': 2174124612,
     'confidence': 0.8,
     'object_id': 2,
-    'feature_embeddings': [random.random() for _ in range(512)],
-    'object_image': b'dfihsdhfg'.decode()
 }
 
-base64.b64decode()
-sender.sendmsg(msg=json.dumps(message), topic = 'testDuong')
- 
-print(message['object_image'])
+# base64.b64decode()
+while True:
+    sender.sendmsg(msg=json.dumps(message), topic = 'testDuong')
+    print("send")
+
+# print(message['object_image'])
 print(f'Sending message to topic message')
 
 # while True:
