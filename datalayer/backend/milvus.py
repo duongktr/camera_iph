@@ -10,7 +10,7 @@ import pandas as pd
 DEFAULT_INDEX = {
     "index_type": "FLAT",
     "params": {},
-    "metric_type": "L2"
+    "metric_type": "COSINE"
 }
 
 DEFAULT_SEARCH = {
@@ -70,7 +70,7 @@ class MilvusBackend:
                 index_field = key
             else:
                 fields.append(
-                    FieldSchema(name=key, dtype=DataType.VARCHAR, max_length=30000)
+                    FieldSchema(name=key, dtype=DataType.VARCHAR, max_length=60000)
                 )
         return fields, index_field
 
@@ -106,7 +106,7 @@ class MilvusBackend:
         pass
     
     def drop_collection(self):
-        self
+        self.collection.drop()
 
     def schema(self):
         return self.collection.schema

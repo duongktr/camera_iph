@@ -1,93 +1,109 @@
-import cv2
 import numpy as np
-import pickle
-from pathlib import Path
-import redis
+import cv2
 
-from boxmot import DeepOCSORT, BoTSORT
-from ultralytics import YOLO
+def non_max_suppression(boxes, max_bbox_overlap, scores=None):
+    """
+    Suppress overlapping detections.
+
+    Original code from [1]_ has been adapted to include confidence score.
+
+    .. [1] http://www.pyimagesearch.com/2015/02/16/
+           faster-non-maximum-suppression-python/
+
+    Examples
+    --------
+
+        >>> boxes = [d.roi for d in detections]
+        >>> scores = [d.confidence for d in detections]
+        >>> indices = non_max_suppression(boxes, max_bbox_overlap, scores)
+        >>> detections = [detections[i] for i in indices]
+
+    Parameters
+    ----------
+    boxes : ndarray
+        Array of ROIs (x, y, width, height).
+    max_bbox_overlap : float
+        ROIs that overlap more than this values are suppressed.
+    scores : Optional[array_like]
+       Detector confidence score.
+
+    Returns
+    -------
+    List[int]
+        Returns indices of detections that have survived non-maxima suppression.
+
+    """
+    if len(boxes) == 0:
+        return []
+
+    boxes = boxes.astype(np.float)
+    pick = []
+
+    x1 = boxes[:, 0]
+    y1 = boxes[:, 1]
+    x2 = boxes[:, 2] + boxes[:, 0]
+    y2 = boxes[:, 3] + boxes[:, 1]
+
+    area = (x2 - x1 + 1) * (y2 - y1 + 1)
+    if scores is not None:
+        idxs = np.argsort(scores)
+    else:
+        idxs = np.argsort(y2)
+
+    while len(idxs) > 0:
+        last = len(idxs) - 1
+        i = idxs[last]
+        pick.append(i)
+
+        xx1 = np.maximum(x1[i], x1[idxs[:last]])
+        yy1 = np.maximum(y1[i], y1[idxs[:last]])
+        xx2 = np.minimum(x2[i], x2[idxs[:last]])
+        yy2 = np.minimum(y2[i], y2[idxs[:last]])
+
+        w = np.maximum(0, xx2 - xx1 + 1)
+        h = np.maximum(0, yy2 - yy1 + 1)
+
+        overlap = (w * h) / area[idxs[:last]]
+
+        idxs = np.delete(
+            idxs, np.concatenate(
+                ([last], np.where(overlap > max_bbox_overlap)[0])))
+
+    return pick
 
 
-trackers = {}
-detector = YOLO('yolov8n.pt')
+def delete_overlap_box(boxes, max_bbox_overlap, scores=None):
+    if len(boxes) == 0:
+        return []
 
-color = (0, 0, 255)  # BGR
-thickness = 2
-fontscale = 0.5
+    boxes = boxes.astype(np.float)
+    deleted = []
 
-client = redis.Redis.from_url('redis://localhost:6379/0')
-# keys = client.keys('*')
-# for key in keys:
-#     key = key.decode()
-#     trackers[key] = BoTSORT(
-#         model_weights=Path('osnet_x0_25_msmt17.pt'), # which ReID model to use
-#         device='cpu',
-#         fp16=False,
-#     )
+    x1 = boxes[:, 0]
+    y1 = boxes[:, 1]
+    x2 = boxes[:, 2] + boxes[:, 0]
+    y2 = boxes[:, 3] + boxes[:, 1]
 
-while True:
-    keys = client.keys('*')
-    for key in keys:
-        key = key.decode()
+    area = (x2 - x1 + 1) * (y2 - y1 + 1)
+    if scores is not None:
+        idxs = np.argsort(scores)
+    else:
+        idxs = np.argsort(y2)
 
-        if key not in trackers:
-            trackers[key] = BoTSORT(
-            model_weights=Path('osnet_x0_25_msmt17.pt'), # which ReID model to use
-            device='cpu',
-            fp16=False,
-        )
+    for i in range(len(idxs)):
+        # last = len(idxs) - 1
+        # i = idxs[last]
+        # pick.append(i)
 
-        # Get data
-        data = client.lpop(key)
-        if data is None:
-            continue
-        im = pickle.loads(data)
+        xx1 = np.maximum(x1[idxs[i]], x1[idxs[i + 1:]])
+        yy1 = np.maximum(y1[idxs[i]], y1[idxs[i + 1:]])
+        xx2 = np.minimum(x2[idxs[i]], x2[idxs[i + 1:]])
+        yy2 = np.minimum(y2[idxs[i]], y2[idxs[i + 1:]])
 
-        # substitute by your object detector, input to tracker has to be N X (x, y, x, y, conf, cls)
-        # dets = np.array([[144, 212, 578, 480, 0.82, 0],
-        #                 [425, 281, 576, 472, 0.56, 65]])
-        # source = cv2.imread('/home/hoang/Downloads/aihub/tracking/data/warm_up_data/14b_0_105102/img1/000001.jpg')
-        dets = detector.predict(source=im, classes=0)
-        dets = dets[0].boxes.data.cpu().numpy()
+        w = np.maximum(0, xx2 - xx1 + 1)
+        h = np.maximum(0, yy2 - yy1 + 1)
 
-        tracks = trackers[key].update(dets, im) # --> (x, y, x, y, id, conf, cls, ind)
-
-        xyxys = tracks[:, 0:4].astype('int') # float64 to int
-        ids = tracks[:, 4].astype('int') # float64 to int
-        confs = tracks[:, 5]
-        clss = tracks[:, 6].astype('int') # float64 to int
-        inds = tracks[:, 7].astype('int') # float64 to int
-
-        # in case you have segmentations or poses alongside with your detections you can use
-        # the ind variable in order to identify which track is associated to each seg or pose by:
-        # segs = segs[inds]
-        # poses = poses[inds]
-        # you can then zip them together: zip(tracks, poses)
-
-        # print bboxes with their associated id, cls and conf
-        if tracks.shape[0] != 0:
-            for xyxy, id, conf, cls in zip(xyxys, ids, confs, clss):
-                conf = round(conf, 4)
-                im = cv2.rectangle(
-                    im,
-                    (xyxy[0], xyxy[1]),
-                    (xyxy[2], xyxy[3]),
-                    color,
-                    thickness
-                )
-                cv2.putText(
-                    im,
-                    f'id: {id}, conf: {conf}, c: {cls}',
-                    (xyxy[0], xyxy[1]-10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    fontscale,
-                    color,
-                    thickness
-                )
-
-        # show image with bboxes, ids, classes and confidences
-        cv2.imshow(key, im)
-
-        # break on pressing q
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        overlap = (w * h) / area[idxs[i + 1:]]
+        if len(np.where(overlap > max_bbox_overlap)[0]) > 0:
+            deleted += list(idxs[np.concatenate(([i], np.where(overlap > max_bbox_overlap)[0] + i + 1))])
+    return list(set(idxs) - set(deleted))
