@@ -159,8 +159,8 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-test_milvus.py
-test_read.py
-test_send.py 
-test.py
-
+datalayer/backend/test_milvus.py
+datalayer/backend/test_read.py
+datalayer/backend/test_send.py 
+datalayer/test.py
+datalayer/test2.py

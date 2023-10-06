@@ -14,7 +14,7 @@ from time import strftime, localtime, time
 def convert_second_2_datetime(seconds):
     return strftime('%Y-%m-%d %H:%M:%S', localtime(seconds))
 
-collection='test_milvus2'
+collection='test_milvus1'
 
 schema = {
     "embeddings": 2048,
@@ -39,39 +39,22 @@ image2 = image.decode("utf-8")
 # print(image2)
 
 data = [
-[[random.random() for _ in range(2048)]],
-[json.dumps(metadata)]
+    [[0 for _ in range(2048)]],
+    [json.dumps(metadata)]
 ]
-testCollection.insert(data)
+testCollection.insert(data) 
+# search_params = {
+#             "anns_field": "embeddings",
+#             "param": {"metric_type": "IP"}, #inner product ~ cosine, cosine = 1 - IP 
+#             "limit": 1,
+#             "output_fields": ['metadata']
+#             }
+# res = testCollection.search(data=data, search_params=search_params)
+# hit = res[0][0]
 
-# print(testCollection.is_empty())
-# testCollection.drop_collection()
-
-# testCollection = MilvusBackend(host="localhost", port='19530', collection=collection, schema=schema, index_params=index_params)
-
-# print(testCollection.num_entities())
-
-
-# vector = [[random.random() for _ in range(512)],
-#           [random.random() for _ in range(512)]]
-# res = testCollection.search(vector)
-# # s = json.dumps(metadata)
-# # s = json.loads(s)
-# for r in res:
-#     print(r.ids)
-# for r in res:
-# id = res[0].ids[0]
-# query = {
-#     "expr": f'_id == {id}',
-#     "output_fields": ['metadata']
-# }
-# output = testCollection.query(query_params=query)
-# x = json.loads(output[0]['metadata'])
-# print(x['globalId'])
-# print(type(output[0]))
-
-# print(type(vector))
-
+# x = hit.entity.get('metadata')
+# x = json.loads(x)
+# print(x['objectImage'].encode("utf-8"))
 
 
 

@@ -1,10 +1,11 @@
 from backend.kafka_custom import KafkaReader
 from backend.milvus import MilvusBackend
 from backend.es import ElasticsearchBackend
-from utils.utility import convert_second_2_datetime, normalize_vector
+from utils.utility import normalize_vector
 
 from loguru import logger
 
+import numpy as np
 import datetime
 import pickle
 import json
@@ -12,7 +13,6 @@ import time
 
 from sklearn.cluster import AgglomerativeClustering
 
-test_mapping = {"name":"kotoratest"}
 test_index = "name"
 
 #insert default data
@@ -25,7 +25,7 @@ meta = {
     }
 
 default_data = [
-    [[1 for _ in range(2048)]],
+    [[0 for _ in range(2048)]],
     [json.dumps(meta)]
 ]
 # match feature embeddings received from jetson
@@ -41,18 +41,18 @@ class Matching():
                 "request_timeout_ms": 300000,
                 "enable_auto_commit": False,
                 "auto_offset_reset": "earliest",
-                "topic": "testtrack6"
+                "topic": "test"
             },
             es_opts={
             "host": "localhost",
             "port": 9200,
             # "index_prefix": "kotora"
             "index_mapping": {
-                "name": "ktrtest1"
+                "name": "ktrtest2"
                 }
             },
             milvus_opts = {
-                "host":"192.168.1.236",
+                "host":"localhost",
                 "port": 19530,
                 "collection": "test_milvus1", #change schema,
                 "schema":{
@@ -67,7 +67,7 @@ class Matching():
             },
             search_params = {
             "anns_field": "embeddings",
-            "param": {"metric_type": "IP"}, #inner product with normalized data ~ cosine 
+            "param": {"metric_type": "IP"}, #inner product ~ cosine, cosine = 1 - IP 
             "limit": 1,
             "output_fields": ['metadata']
             }):
@@ -84,120 +84,6 @@ class Matching():
             self.milvusdb.insert(default_data)
         
         self.es = ElasticsearchBackend(**es_opts)
-        
-    # def run(self, **kwargs):
-    #     """
-    #         records: a list include metadata
-    #         record:     'camera_id',
-    #                     'timestamp',
-    #                     'object_bbox',
-    #                     'confidence',
-    #                     'object_id',
-    #                     'feature_embeddings',
-    #                     'object_image'
-
-    #         insert new document to db
-    #         document: {
-    #             "embeddings":,
-    #             "metadata": {
-    #                 "global_id",
-    #                 "object_image", need decode utf 8 to string for saving
-    #                 "time_start",
-    #                 "cam_id"
-    #             }
-    #         }
-    #     """
-    #     threshold = kwargs.get('distance_threshold', 0.3)
-        
-    #     count = 1
-        
-    #     while True:
-    #         #check new day
-    #         current = datetime.datetime.now().time()
-    #         if current.hour == 0 and current.minute == 0 and current.second == 0:
-    #             #reset count
-    #             count = 1
-
-    #             # reset database and insert first record to database
-    #             # self.milvusdb.drop_collection()
-
-    #         #sleep 
-    #         time.sleep(0.5)
-            
-    #         records = []
-
-    #         #read message from kafka
-    #         consumerRecords = self.reader.poll(1000)
-            
-    #         print(len(consumerRecords))
-
-    #         if not len(consumerRecords):
-    #             continue
-            
-    #         for record in consumerRecords:
-    #             records.append(record.value)
-
-    #         vectors = [record['feature_embeddings'] for record in records]
-            
-    #         # !!search tung vector
-    #         searchResults = self.milvusdb.search(vectors, search_params=self.search_params)
-
-    #         if not len(searchResults):
-    #             continue
-
-    #         ids, distances = [result.ids[0] for result in searchResults], [result.distances[0] for result in searchResults]
-
-    #         for record, id, distance, embedding in zip(records, ids, distances, vectors):
-    #             # new ID
-    #             if distance > threshold:
-    #                 # global ID
-    #                 print('pass first condition')
-    #                 metadata = {
-    #                     "globalId": count,
-    #                     "cameraId": record['camera_id'],                    
-    #                     "timeStart": convert_second_2_datetime(record['timestamp']),
-    #                     "objectImage": record['object_image'].decode("utf-8") #convert byte encode to string
-    #                 }
-
-    #                 data = [
-    #                     [embedding],
-    #                     [json.dumps(metadata)] #convert json object to string 
-    #                 ]
-    #                 count += 1
-    #                 print(f'Insert new user id {count}')
-    #                 #insert new user
-    #                 self.milvusdb.insert(data)
-    #                 #send es
-    #                 self.es.insert(index=test_index, body= metadata)
-    #             else:
-    #                 print('pass second condition')
-
-    #                 #already exist user
-    #                 query_params = {
-    #                     "expr": f'_id == {id}',
-    #                     "output_fields": ['metadata']
-    #                 }
-                    
-    #                 query_results = self.milvusdb.query(query_params)
-
-    #                 result = json.loads(query_results[0]['metadata'])
-
-    #                 metadata = {
-    #                     "globalId": result['globalId'],
-    #                     "cameraId": record['camera_id'],
-    #                     "timeStart": convert_second_2_datetime(record['timestamp']),
-    #                     "objectImage": record['object_image'].decode("utf-8")
-    #                 }
-
-    #                 data = [
-    #                     [embedding],
-    #                     [json.dumps(metadata)]
-    #                 ]
-    #                 #insert old user
-    #                 self.milvusdb.insert(data)
-    #                 #send es
-    #                 self.es.insert(index=test_index, body=metadata)
-
 
     def run(self, **kwargs):
          """
@@ -221,52 +107,125 @@ class Matching():
                 }
             }
         """
-         
-         threshold =  kwargs.get('distance_threshold', 0.3)
-        
+         #cosine threshold
+         threshold =  kwargs.get('distance_threshold', 0.9)
+    
          count = 1
-        
+    
          while True:
-            #check new day
-            current = datetime.datetime.now().time()
-            if current.hour == 0 and current.minute == 0 and current.second == 0:
-                #reset count
-                count = 1
+            try:
+                #check new day, reset data in 1 minute
+                current = datetime.datetime.now().time()
+                if current.hour == 0 and current.minute == 0:
+                    #reset count
+                    count = 1
 
-                # reset database and insert default record to database:
-                self.milvusdb.drop_collection()
+                    # reset database and insert default record to database:
+                    self.milvusdb.drop_collection()
 
-                self.milvusdb = MilvusBackend(**self.milvus_opt)
+                    self.milvusdb = MilvusBackend(**self.milvus_opt)
 
-                #add default
-                self.milvusdb.insert(default_data)
+                    #add default
+                    self.milvusdb.insert(default_data)
 
-            #sleep 
-            time.sleep(0.5)
-            
-            records = []
+                    break
 
-            #read message from kafka
-            consumerRecords = self.reader.poll(1000)
-            
-            print(len(consumerRecords))
+                #sleep 
+                time.sleep(0.5)
+                
+                records = []
 
-            if not len(consumerRecords):
-                continue
-            
-            for record in consumerRecords:
-                records.append(record.value)
+                #read message from kafka
+                consumerRecords = self.reader.poll(1000)
+                
+                print(len(consumerRecords))
+                if not len(consumerRecords):
+                    continue
+                
+                for record in consumerRecords:
+                    records.append(record.value)
 
-            vectors = [normalize_vector(record['feature_embeddings']) for record in records]
+                old_vectors = [record['feature_embeddings'] for record in records]
+                
+                new_vectors = []
+                new_records = []
 
-            # for vector, record in zip(vectors, records):
-            #     searchresult = self.milvusdb.search(vector) 
+                labels = AgglomerativeClustering(
+                    distance_threshold=0.2,
+                    metric='cosine',
+                    n_clusters=None,
+                    linkage='complete',
+                ).fit_predict(np.array(vectors))
 
-            labels = AgglomerativeClustering(
-                distance_threshold=threshold,
-                metric='cosine',
-                n_clusters=None,
-                linkage='complete',
-            ).fit_predict(vectors)
+                u_labels = np.unique(labels)
+
+                for i,label in enumerate(u_labels):
+                    #index cluster
+                    in_cluster = np.where(labels==label)[0]
+
+                    #vector normalization
+                    #new vectors
+                    new_vectors.append([normalize_vector(old_vectors[index]) for index in in_cluster])
+                    new_records.append([records[index] for index in in_cluster])
+                
+                print('pass clustering')
+                
+                # search with each cluster
+                for vectors, records in zip(new_vectors, new_records):
+                    # search first vector
+                    result = self.milvusdb.search([vectors[0]], search_params=self.search_params)
+                    
+                    distance = result[0].distances[0]
+                    #add new person if small than threshold
+                    if distance < threshold:
+                        print("pass first condition")
+                        metadatas = [
+                            {
+                                "globalId": count,
+                                "cameraId": record['camera_id'],
+                                "timeStart": record['timestamp'],
+                                "objectImage": record['object_image'].decode("utf-8")
+                            } for record in records
+                        ]
+
+                        data = [
+                            vectors,
+                            [json.dumps(metadata) for metadata in metadatas]
+                        ]
+                        
+                        count += 1
+ 
+                        logger.info("insert user id " + str(count))
+                        #insert new user
+                        self.milvusdb.insert(data)
+                        #send es
+                        for metadata in metadatas:
+                            self.es.insert(index=test_index, body=metadata)
+                    elif distance > threshold:
+                        print("pass second condition")                        
+                        hit = result[0][0].entity.get('metadata')
+                        hit = json.loads(hit)
+
+                        id = hit['globalId']
+                        metadatas = [
+                            {
+                                "globalId": id,
+                                "cameraId": record['camera_id'],
+                                "timeStart": record['timestamp'],
+                                "objectImage": record['object_image'].decode("utf-8")
+                            } for record in records
+                        ]
+
+                        data = [
+                            vectors,
+                            [json.dumps(metadata) for metadata in metadatas]
+                        ]
+
+                        self.milvusdb.insert(data)
+                        #send es
+                        for metadata in metadatas:
+                            self.es.insert(index=test_index, body=metadata) 
+            except Exception as e:
+                logger.info("Error: " + str(e))
 
             
