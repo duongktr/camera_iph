@@ -1,8 +1,7 @@
 from backend.kafka_custom import KafkaReader
 from backend.milvus import MilvusBackend
 from backend.es import ElasticsearchBackend
-from utils.utility import normalize_vector
-
+from utils.utility import convert_second_2_datetime
 from loguru import logger
 
 import numpy as np
@@ -10,6 +9,8 @@ import datetime
 import pickle
 import json
 import time
+import sys
+from uuid import uuid4
 
 from sklearn.cluster import AgglomerativeClustering
 
@@ -41,14 +42,14 @@ class Matching():
                 "request_timeout_ms": 300000,
                 "enable_auto_commit": False,
                 "auto_offset_reset": "earliest",
-                "topic": "test1"
+                "topic": "testtrack13"
             },
             es_opts={
             "host": "localhost",
             "port": 9200,
             # "index_prefix": "kotora"
             "index_mapping": {
-                "name": "ktrtest2"
+                "name": "ktrtest"
                 }
             },
             milvus_opts = {
@@ -108,9 +109,10 @@ class Matching():
             }
         """
          #cosine threshold
-         threshold =  kwargs.get('distance_threshold', 0.9)
+         threshold =  kwargs.get('distance_threshold', 0.8)
     
          count = 1
+         frame = 1
     
          while True:
             try:
@@ -118,7 +120,7 @@ class Matching():
                 current = datetime.datetime.now().time()
                 if current.hour == 0 and current.minute == 0:
                     #reset count
-                    count = 1
+                    # count = 1
 
                     # reset database and insert default record to database:
                     self.milvusdb.drop_collection()
@@ -151,7 +153,7 @@ class Matching():
                 new_records = []
 
                 labels = AgglomerativeClustering(
-                    distance_threshold=0.2,
+                    distance_threshold= 1-threshold,
                     metric='cosine',
                     n_clusters=None,
                     linkage='complete',
@@ -167,7 +169,7 @@ class Matching():
                     new_vectors.append([old_vectors[index] for index in in_cluster])
                     new_records.append([records[index] for index in in_cluster])
                 
-                print('pass clustering')
+                logger.info('pass clustering')
                 
                 # search with each cluster
                 for vectors, records in zip(new_vectors, new_records):
@@ -178,31 +180,35 @@ class Matching():
                     
                     #add new person if small than threshold
                     if distance < threshold:
-                        print("pass first condition")
+                        logger.info("pass first condition")
                         metadatas = [
                             {
                                 "globalId": count,
                                 "cameraId": record['camera_id'],
-                                "timeStart": record['timestamp'],
+                                "timeStart": convert_second_2_datetime(record['timestamp']),
                                 "objectImage": record['object_image'].decode("utf-8")
                             } for record in records
                         ]
+
+                        # f = open("log.txt", mode='a')
+                        
+                        # f.write(f'{count}, {record["object_image"].decode("utf-8")}' for record in records)
 
                         data = [
                             vectors,
                             [json.dumps(metadata) for metadata in metadatas]
                         ]
-                        
+                         
+                        logger.info("insert new id " + str(count) )
                         count += 1
- 
-                        logger.info("insert user id " + str(count))
+
                         #insert new user
                         self.milvusdb.insert(data)
                         #send es
                         for metadata in metadatas:
                             self.es.insert(index=test_index, body=metadata)
                     elif distance > threshold:
-                        print("pass second condition")                        
+                        logger.info("pass second condition")                        
                         hit = result[0][0].entity.get('metadata')
                         hit = json.loads(hit)
 
@@ -211,7 +217,7 @@ class Matching():
                             {
                                 "globalId": id,
                                 "cameraId": record['camera_id'],
-                                "timeStart": record['timestamp'],
+                                "timeStart": convert_second_2_datetime(record['timestamp']),
                                 "objectImage": record['object_image'].decode("utf-8")
                             } for record in records
                         ]
@@ -226,6 +232,6 @@ class Matching():
                         for metadata in metadatas:
                             self.es.insert(index=test_index, body=metadata) 
             except Exception as e:
-                logger.info("Error: " + str(e))
+                logger.error("Error: " + str(e))
 
             
