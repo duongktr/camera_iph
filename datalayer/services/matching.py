@@ -41,7 +41,7 @@ class Matching():
                 "request_timeout_ms": 300000,
                 "enable_auto_commit": False,
                 "auto_offset_reset": "earliest",
-                "topic": "test"
+                "topic": "test1"
             },
             es_opts={
             "host": "localhost",
@@ -67,7 +67,7 @@ class Matching():
             },
             search_params = {
             "anns_field": "embeddings",
-            "param": {"metric_type": "IP"}, #inner product ~ cosine, cosine = 1 - IP 
+            "param": {"metric_type": "IP"}, #inner product ~ cosine
             "limit": 1,
             "output_fields": ['metadata']
             }):
@@ -155,17 +155,16 @@ class Matching():
                     metric='cosine',
                     n_clusters=None,
                     linkage='complete',
-                ).fit_predict(np.array(vectors))
+                ).fit_predict(np.array(old_vectors))
 
                 u_labels = np.unique(labels)
 
-                for i,label in enumerate(u_labels):
+                for label in u_labels:
                     #index cluster
                     in_cluster = np.where(labels==label)[0]
 
-                    #vector normalization
                     #new vectors
-                    new_vectors.append([normalize_vector(old_vectors[index]) for index in in_cluster])
+                    new_vectors.append([old_vectors[index] for index in in_cluster])
                     new_records.append([records[index] for index in in_cluster])
                 
                 print('pass clustering')
@@ -176,6 +175,7 @@ class Matching():
                     result = self.milvusdb.search([vectors[0]], search_params=self.search_params)
                     
                     distance = result[0].distances[0]
+                    
                     #add new person if small than threshold
                     if distance < threshold:
                         print("pass first condition")
